@@ -48,6 +48,51 @@ pipeline {
                 '''
             }
         }
+        stage("Build dependencies") {
+            agent {
+                docker {
+                    image "public.ecr.aws/sam/build-${PYTHON_RUNTIME}:latest"
+                    reuseNode true
+                }
+            }
+            when { 
+                changeset "requirement.txt"
+            }
+            steps {
+                dir('python_volume') {
+                    sh '''
+                        installation_path=python
+                        mkdir $installation_path
+                        pip3 install -r ../requirement.txt --upgrade -t $installation_path
+                        zip -r lambda-layer.zip * -x '*/__pycache__/*'
+                        aws s3 cp lambda-layer.zip s3://${S3_BUCKET_NAME}/
+                    '''
+                }
+            }
+        }
+        stage("Update lambda layer & function") {
+            when { 
+                changeset "requirement.txt"
+            }
+            steps {
+                dir('python_volume') {
+                    sh '''
+                        publish_layer_response=$(aws lambda publish-layer-version \
+                            --layer-name "${LAMBDA_LAYER_NAME}" \
+                            --description "Error Narrative Sheet" \
+                            --license-info "MIT" \
+                            --content S3Bucket=${S3_BUCKET_NAME},S3Key=lambda-layer.zip \
+                            --compatible-runtimes "${PYTHON_RUNTIME}")
+
+                        publish_layer_response_arn=$(echo ${publish_layer_response} | jq -r .LayerVersionArn)
+                        
+                        aws lambda update-function-configuration \
+                            --function-name ${LAMBDA_FUNCTION_NAME} \
+                            --layers ${publish_layer_response_arn}
+                    '''
+                }
+            }
+        }
     }
 }
 
