@@ -34,6 +34,20 @@ pipeline {
                 '''
             }
         }
+        stage ("Update lambda function code") {
+            when { 
+                changeset "lambda_function.py"
+            }
+            steps {
+                sh '''
+                    zip ${LAMBDA_FUNCTION_NAME}.zip lambda_function.py
+                    
+                    aws lambda update-function-code \
+                        --function-name ${LAMBDA_FUNCTION_NAME} \
+                        --zip-file fileb://${LAMBDA_FUNCTION_NAME}.zip
+                '''
+            }
+        }
     }
 }
 
