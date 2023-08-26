@@ -93,6 +93,30 @@ pipeline {
                 }
             }
         }
+        stage("Update lambda function environment variables") {
+            environment {
+                ONLINE_CODE = online_code()
+                BATCH_CODE = batch_code()
+                ERROR_DESCRIPTION = error_description()
+            }
+            steps {
+                    sh '''
+                        aws lambda update-function-configuration \
+                            --function-name ${LAMBDA_FUNCTION_NAME} \
+                            --environment "Variables={ONLINE_CODE=${ONLINE_CODE}, BATCH_CODE=${BATCH_CODE}, ERROR_DESCRIPTION=${ERROR_DESCRIPTION}}"
+                    '''
+            }
+        }
+        stage("Invoke lambda function") {
+            steps {
+                    sh '''
+                        aws lambda invoke \
+                            --function-name ${LAMBDA_FUNCTION_NAME} \
+                            --cli-binary-format raw-in-base64-out response.json
+                        cat response.json
+                    '''
+            }
+        }
     }
 }
 
