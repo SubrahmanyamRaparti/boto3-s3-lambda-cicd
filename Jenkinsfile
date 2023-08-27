@@ -5,6 +5,7 @@ pipeline {
         LAMBDA_FUNCTION_NAME = "error_narrative_sheet"
         S3_BUCKET_NAME = "error-narrative-sheet"
         PYTHON_RUNTIME = "python3.10"
+        PATH = "${PATH}:/var/lib/jenkins/.sonar/sonar-scanner-4.7.0.2747-linux/bin"
     }
     parameters { 
         string(name: 'OnlineErrorCode', defaultValue: 'ONLINE-001', description: 'Enter the online error code') 
@@ -23,6 +24,30 @@ pipeline {
             steps {
                 script {
                     git branch: 'main', url: 'https://github.com/SubrahmanyamRaparti/boto3-s3-lambda-cicd.git'
+                }
+            }
+        }
+        stage ("Static Code Analysis - Sonar Cloud") {
+            environment {
+                SONAR_TOKEN = sonar_token()
+            }
+            steps {
+                withSonarQubeEnv('SonarCloud') {
+                    sh '''
+                        sonar-scanner \
+                          -Dsonar.organization=subrahmanyam \
+                          -Dsonar.projectKey=subrahmanyam_error-narrative-report \
+                          -Dsonar.sources=. \
+                          -Dsonar.token=${SONAR_TOKEN} \
+                          -Dsonar.host.url=https://sonarcloud.io
+                    '''
+                }
+            }
+        }
+        stage("Quality Gate") {
+            steps {
+                timeout(time: 1, unit: 'HOURS') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
@@ -133,4 +158,9 @@ def batch_code() {
 def error_description() {
     def online_code = sh returnStdout: true, script: "echo ${params.ErrorDescription}"
     return online_code
+}
+
+def sonar_token() {
+    def sonar_token = sh returnStdout: true, script: "aws ssm get-parameter --name /cicd/sonartoken --with-decryption --region ap-south-1 | jq -r .Parameter.Value"
+    return sonar_token
 }
